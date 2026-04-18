@@ -1,5 +1,5 @@
 // ── API Configuration ─────────────────────────────────────────
-const API = 'http://localhost:5000/api';
+const API = '/api';
 
 // ── Token helpers ─────────────────────────────────────────────
 const token  = {
