@@ -31,8 +31,7 @@ services:
         destination: /index.html
 
 databases:
-  - type: postgres
-    name: hms-postgres
+  - name: hms-postgres
     databaseName: hospital_db
     user: postgres
     # The schema.sql will need to be applied manually via psql or automated script, 
