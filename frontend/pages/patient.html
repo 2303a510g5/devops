@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>MediCore — Patient Dashboard</title>
+<link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-icon">M</div>
+      <span class="sidebar-brand-name">MediCore</span>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">My Health</div>
+      <button class="nav-item active" data-page="overview"><span class="nav-icon">🏠</span>Overview</button>
+      <button class="nav-item" data-page="book"><span class="nav-icon">📅</span>Book Appointment</button>
+      <button class="nav-item" data-page="appointments"><span class="nav-icon">📋</span>My Appointments</button>
+      <button class="nav-item" data-page="prescriptions"><span class="nav-icon">💊</span>Prescriptions</button>
+      <button class="nav-item" data-page="billing"><span class="nav-icon">💳</span>Billing</button>
+      <div class="nav-section">Account</div>
+      <button class="nav-item" data-page="profile"><span class="nav-icon">👤</span>My Profile</button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-avatar" id="sbAvatar">P</div>
+        <div style="flex:1;min-width:0">
+          <div class="sidebar-user-name" id="sbName">Patient</div>
+          <div class="sidebar-user-role">Patient</div>
+        </div>
+        <button class="sidebar-logout" onclick="logout()" title="Logout">⏻</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <header class="topbar">
+      <span id="pageTitle" style="font-size:16px;font-weight:600">Overview</span>
+      <div class="topbar-right">
+        <span class="topbar-user" id="tbUser"></span>
+        <span class="role-pill role-pill-patient">Patient</span>
+      </div>
+    </header>
+    <main class="page-body" id="pageBody"><div class="spinner"></div></main>
+  </div>
+</div>
+
+<div class="toast" id="globalToast"></div>
+
+<script src="../js/api.js"></script>
+<script>
+let user = null;
+let selDoc = null, selTime = null;
+
+// ── INIT ──
+(async function() {
+  user = requireAuth('patient');
+  if (!user) return;
+  document.getElementById('sbAvatar').textContent = user.name[0].toUpperCase();
+  document.getElementById('sbName').textContent   = user.name;
+  document.getElementById('tbUser').textContent   = user.name;
+  document.querySelectorAll('.nav-item').forEach(b => b.addEventListener('click', () => navigate(b.dataset.page)));
+  navigate('overview');
+})();
+
+function navigate(page) {
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+  const titles = { overview:'Overview', book:'Book Appointment', appointments:'My Appointments', prescriptions:'Prescriptions', billing:'Billing', profile:'My Profile' };
+  document.getElementById('pageTitle').textContent = titles[page] || page;
+  if (page !== 'book') { selDoc = null; selTime = null; }
+  PAGES[page]?.();
+}
+
+// ── PAGE RENDERERS ──
+const PAGES = {
+
+  async overview() {
+    const pb = document.getElementById('pageBody');
+    pb.innerHTML = '<div class="spinner"></div>';
+    try {
+      const res = await Patients.appointments(user.id);
+      const appts = res.data;
+      const upcoming = appts.filter(a => ['pending','confirmed'].includes(a.status));
+      pb.innerHTML = `
+        <div class="welcome-banner">
+          <div class="wb-text"><h3>Welcome back, ${user.name.split(' ')[0]}!</h3><p>${new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long'})}</p></div>
+          <div class="wb-icon">🩺</div>
+        </div>
+        <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+          <div class="stat-card"><div class="stat-icon si-blue">📅</div><div><div class="stat-value">${upcoming.length}</div><div class="stat-label">Upcoming</div></div></div>
+          <div class="stat-card"><div class="stat-icon si-green">✅</div><div><div class="stat-value">${appts.filter(a=>a.status==='completed').length}</div><div class="stat-label">Completed</div></div></div>
+          <div class="stat-card"><div class="stat-icon si-amber">⏳</div><div><div class="stat-value">${appts.filter(a=>a.status==='pending').length}</div><div class="stat-label">Pending</div></div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Upcoming Appointments</span><button class="btn btn-primary btn-sm" onclick="navigate('book')">+ Book New</button></div>
+          ${upcoming.length ? upcoming.slice(0,4).map(a=>`<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--border)">
+            <div><div style="font-weight:600;font-size:14px">${a.doctor_name}</div><div style="font-size:12px;color:var(--text2)">${a.specialization}</div><div style="font-size:12px;color:var(--text3);margin-top:4px">${formatDate(a.appointment_date)} at ${a.appointment_time?.slice(0,5)}</div></div>
+            <div>${badge(a.status)}</div>
+          </div>`).join('') : '<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-title">No upcoming appointments</div><div class="empty-sub">Book your first appointment</div><br><button class="btn btn-primary" onclick="navigate(\'book\')" style="margin-top:8px">Book Now</button></div>'}
+        </div>`;
+    } catch (err) {
+      pb.innerHTML = `<div class="alert alert-error" style="display:block">${err.message}</div>`;
+    }
+  },
+
+  async book() {
+    const pb = document.getElementById('pageBody');
+    pb.innerHTML = '<div class="spinner"></div>';
+    try {
+      const res = await Doctors.list();
+      const times = ['09:00','09:30','10:00','10:30','11:00','11:30','14:00','14:30','15:00','15:30','16:00','16:30'];
+      const today = new Date().toISOString().split('T')[0];
+      pb.innerHTML = `
+        <div class="card">
+          <div class="card-header"><span class="card-title">Book an Appointment</span></div>
+          <div class="card-body">
+            <div class="step-block"><div class="step-label">Step 1 — Select a Doctor</div>
+              <div class="doctor-grid">${res.data.map(d=>`<div class="doctor-card" id="dc_${d.id}" onclick="selectDoc(${d.id},${JSON.stringify(d).replace(/"/g,'&quot;')})">
+                <div class="dc-avatar">${d.name.split(' ').pop()[0]}</div>
+                <div class="dc-name">${d.name}</div><div class="dc-spec">${d.specialization} · ${d.experience_years} yrs</div>
+                <div class="dc-fee">₹${d.consultation_fee} / visit</div><div class="dc-tag">✓ Selected</div>
+              </div>`).join('')}</div>
+            </div>
+            <div class="step-block"><div class="step-label">Step 2 — Date & Reason</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:8px">
+                <div class="form-group"><label>Date</label><input type="date" id="bookDate" min="${today}" value="${today}"/></div>
+                <div class="form-group"><label>Reason</label><input type="text" id="bookReason" placeholder="Describe your symptoms..."/></div>
+              </div>
+            </div>
+            <div class="step-block"><div class="step-label">Step 3 — Choose Time Slot</div>
+              <div class="time-grid">${times.map(t=>`<button class="time-slot" data-time="${t}" onclick="selectSlot('${t}')">${t}</button>`).join('')}</div>
+            </div>
+            <div class="alert alert-error" id="bookErr"></div>
+            <button class="book-btn" onclick="submitBooking()"><span id="bookIcon">📅</span><span id="bookText">Confirm &amp; Book Appointment</span></button>
+          </div>
+        </div>`;
+    } catch (err) {
+      pb.innerHTML = `<div class="alert alert-error" style="display:block">${err.message}</div>`;
+    }
+  },
+
+  async appointments() {
+    const pb = document.getElementById('pageBody');
+    pb.innerHTML = '<div class="spinner"></div>';
+    try {
+      const res = await Patients.appointments(user.id);
+      pb.innerHTML = `<div class="card">
+        <div class="card-header"><span class="card-title">My Appointments (${res.data.length})</span><button class="btn btn-primary btn-sm" onclick="navigate('book')">+ Book New</button></div>
+        ${res.data.length ? `<div class="table-wrap"><table>
+          <thead><tr><th>Doctor</th><th>Specialization</th><th>Date & Time</th><th>Reason</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody>${res.data.map(a=>`<tr>
+            <td><strong>${a.doctor_name}</strong></td><td>${a.specialization}</td>
+            <td>${formatDate(a.appointment_date)}<br><small style="color:var(--text2)">${a.appointment_time?.slice(0,5)}</small></td>
+            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.reason||'—'}</td>
+            <td>${badge(a.status)}</td>
+            <td>${['pending','confirmed'].includes(a.status)?`<button class="btn btn-danger btn-sm" onclick="cancelAppt(${a.id})">Cancel</button>`:'—'}</td>
+          </tr>`).join('')}</tbody></table></div>`
+          : `<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-title">No appointments yet</div><button class="btn btn-primary" onclick="navigate('book')" style="margin-top:12px">Book Now</button></div>`}
+        </div>`;
+    } catch (err) {
+      pb.innerHTML = `<div class="alert alert-error" style="display:block">${err.message}</div>`;
+    }
+  },
+
+  async prescriptions() {
+    const pb = document.getElementById('pageBody');
+    pb.innerHTML = '<div class="spinner"></div>';
+    try {
+      const res = await Patients.prescriptions(user.id);
+      pb.innerHTML = `<div class="card"><div class="card-header"><span class="card-title">My Prescriptions</span></div><div class="card-body">
+        ${res.data.length ? res.data.map(rx => {
+          const meds = typeof rx.medications === 'string' ? JSON.parse(rx.medications) : (rx.medications||[]);
+          return `<div style="background:var(--bg2);border-radius:8px;padding:14px;margin-bottom:12px">
+            <div style="font-weight:700;font-size:15px;margin-bottom:3px">${rx.diagnosis}</div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Dr. ${rx.doctor_name} · ${formatDate(rx.appointment_date)}</div>
+            ${meds.map(m=>`<div style="background:white;border-radius:6px;padding:10px;margin-bottom:7px;border-left:3px solid var(--teal)">
+              <div style="font-weight:600;font-size:13px">${m.name}</div>
+              <div style="font-size:11px;color:var(--text2);margin-top:2px">${m.dosage} · ${m.frequency} · ${m.duration}</div>
+            </div>`).join('')}
+            ${rx.instructions?`<div style="font-size:12px;color:var(--text2);background:white;border-radius:6px;padding:10px;margin-top:6px">📝 ${rx.instructions}</div>`:''}
+          </div>`;
+        }).join('') : `<div class="empty-state"><div class="empty-icon">💊</div><div class="empty-title">No prescriptions yet</div></div>`}
+        </div></div>`;
+    } catch (err) {
+      pb.innerHTML = `<div class="alert alert-error" style="display:block">${err.message}</div>`;
+    }
+  },
+
+  async billing() {
+    const pb = document.getElementById('pageBody');
+    pb.innerHTML = '<div class="spinner"></div>';
+    try {
+      const res = await Patients.billing(user.id);
+      const total = res.data.reduce((s,b)=>s+parseFloat(b.total_amount||0),0);
+      const paid  = res.data.filter(b=>b.payment_status==='paid').reduce((s,b)=>s+parseFloat(b.total_amount||0),0);
+      pb.innerHTML = `
+        <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+          <div class="stat-card"><div class="stat-icon si-blue">🧾</div><div><div class="stat-value">${res.data.length}</div><div class="stat-label">Total Bills</div></div></div>
+          <div class="stat-card"><div class="stat-icon si-green">✅</div><div><div class="stat-value">${formatCurrency(paid)}</div><div class="stat-label">Paid</div></div></div>
+          <div class="stat-card"><div class="stat-icon si-amber">⏳</div><div><div class="stat-value">${formatCurrency(total-paid)}</div><div class="stat-label">Pending</div></div></div>
+        </div>
+        <div class="card"><div class="card-header"><span class="card-title">Billing History</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Doctor</th><th>Date</th><th>Fee</th><th>Medicine</th><th>Total</th><th>Status</th></tr></thead>
+        <tbody>${res.data.length ? res.data.map(b=>`<tr>
+          <td>${b.doctor_name}</td><td>${formatDate(b.appointment_date)}</td>
+          <td>${formatCurrency(b.consultation_fee)}</td><td>${formatCurrency(b.medicine_cost)}</td>
+          <td><strong>${formatCurrency(b.total_amount)}</strong></td><td>${badge(b.payment_status)}</td>
+        </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text2)">No billing records yet</td></tr>`}
+        </tbody></table></div></div>`;
+    } catch (err) {
+      pb.innerHTML = `<div class="alert alert-error" style="display:block">${err.message}</div>`;
+    }
+  },
+
+  async profile() {
+    const pb = document.getElementById('pageBody');
+    pb.innerHTML = '<div class="spinner"></div>';
+    try {
+      const res = await Patients.get(user.id);
+      const p = res.data;
+      pb.innerHTML = `<div class="card" style="max-width:520px"><div class="card-header"><span class="card-title">My Profile</span></div><div class="card-body">
+        <div class="profile-header">
+          <div class="profile-avatar" style="background:#3b82f6">${p.name[0]}</div>
+          <div><div class="profile-name">${p.name}</div><div class="profile-email">${p.email}</div><span class="badge badge-confirmed" style="margin-top:6px;display:inline-flex">Patient</span></div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group"><label>Full Name</label><input type="text" id="pName" value="${p.name||''}"/></div>
+          <div class="form-group"><label>Phone</label><input type="tel" id="pPhone" value="${p.phone||''}"/></div>
+          <div class="form-group"><label>Date of Birth</label><input type="date" id="pDob" value="${p.date_of_birth?.split('T')[0]||''}"/></div>
+          <div class="form-group"><label>Gender</label><select id="pGender"><option>Male</option><option>Female</option><option>Other</option></select></div>
+          <div class="form-group"><label>Blood Group</label><select id="pBlood">${['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(b=>`<option ${p.blood_group===b?'selected':''}>${b}</option>`).join('')}</select></div>
+          <div class="form-group full"><label>Address</label><textarea id="pAddr">${p.address||''}</textarea></div>
+        </div>
+        <div id="profileMsg" class="alert"></div>
+        <button class="btn btn-primary" onclick="saveProfile()">Save Changes</button>
+      </div></div>`;
+      document.getElementById('pGender').value = p.gender || 'Male';
+    } catch (err) {
+      pb.innerHTML = `<div class="alert alert-error" style="display:block">${err.message}</div>`;
+    }
+  },
+};
+
+// ── BOOKING ACTIONS ──
+function selectDoc(id, doc) {
+  selDoc = doc;
+  document.querySelectorAll('.doctor-card').forEach(el => el.classList.remove('selected'));
+  document.getElementById('dc_'+id)?.classList.add('selected');
+}
+function selectSlot(t) {
+  selTime = t;
+  document.querySelectorAll('.time-slot').forEach(el => el.classList.toggle('selected', el.dataset.time === t));
+}
+
+async function submitBooking() {
+  const errEl = document.getElementById('bookErr');
+  errEl.style.display = 'none';
+  if (!selDoc)  { errEl.textContent = '⚠ Please select a doctor first.'; errEl.style.display = 'block'; return; }
+  if (!selTime) { errEl.textContent = '⚠ Please choose a time slot.'; errEl.style.display = 'block'; return; }
+
+  const date   = document.getElementById('bookDate').value;
+  const reason = document.getElementById('bookReason').value.trim() || 'Consultation';
+  const btn    = document.querySelector('.book-btn');
+  btn.disabled = true;
+  document.getElementById('bookIcon').textContent = '⏳';
+  document.getElementById('bookText').textContent = 'Booking...';
+
+  try {
+    const res = await Appointments.book({ doctor_id: selDoc.id, appointment_date: date, appointment_time: selTime + ':00', reason });
+    const doctorName = selDoc.name;
+    selDoc = null; selTime = null;
+
+    document.getElementById('pageBody').innerHTML = `
+      <div class="success-card">
+        <div class="success-check">✓</div>
+        <div class="success-title">Appointment Booked Successfully!</div>
+        <div class="success-sub">Your appointment is confirmed. We'll see you soon!</div>
+        <div class="success-details">
+          <div class="sd-row"><span class="sd-label">Doctor</span><span class="sd-value">${doctorName}</span></div>
+          <div class="sd-row"><span class="sd-label">Date</span><span class="sd-value">${formatDate(date)}</span></div>
+          <div class="sd-row"><span class="sd-label">Time</span><span class="sd-value">${selTime||date}</span></div>
+          <div class="sd-row"><span class="sd-label">Reason</span><span class="sd-value">${reason}</span></div>
+          <div class="sd-row"><span class="sd-label">Status</span><span class="sd-value">${badge('confirmed')}</span></div>
+        </div>
+        <div class="success-btns">
+          <button class="btn btn-outline" onclick="navigate('book')">📅 Book Another</button>
+          <button class="btn btn-primary" onclick="navigate('appointments')">📋 View My Appointments</button>
+        </div>
+      </div>`;
+    showToast('✓ Appointment booked with ' + doctorName + '!');
+  } catch (err) {
+    errEl.textContent = err.message; errEl.style.display = 'block';
+    btn.disabled = false;
+    document.getElementById('bookIcon').textContent = '📅';
+    document.getElementById('bookText').textContent = 'Confirm & Book Appointment';
+  }
+}
+
+async function cancelAppt(id) {
+  if (!confirm('Cancel this appointment?')) return;
+  try {
+    await Appointments.cancel(id);
+    showToast('Appointment cancelled.');
+    navigate('appointments');
+  } catch (err) { showToast(err.message, 'error'); }
+}
+
+async function saveProfile() {
+  const msgEl = document.getElementById('profileMsg');
+  try {
+    await Patients.update(user.id, {
+      name:         document.getElementById('pName').value,
+      phone:        document.getElementById('pPhone').value,
+      date_of_birth:document.getElementById('pDob').value,
+      gender:       document.getElementById('pGender').value,
+      blood_group:  document.getElementById('pBlood').value,
+      address:      document.getElementById('pAddr').value,
+    });
+    msgEl.textContent = '✓ Profile saved!';
+    msgEl.className = 'alert alert-success';
+    msgEl.style.display = 'block';
+    setTimeout(() => { msgEl.style.display = 'none'; }, 3000);
+  } catch (err) {
+    msgEl.textContent = err.message; msgEl.className = 'alert alert-error'; msgEl.style.display = 'block';
+  }
+}
+</script>
+</body>
+</html>

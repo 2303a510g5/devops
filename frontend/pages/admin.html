@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>MediCore — Admin Dashboard</title>
+<link rel="stylesheet" href="../css/style.css"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-icon">M</div>
+      <span class="sidebar-brand-name">MediCore</span>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">Overview</div>
+      <button class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span>Dashboard</button>
+      <div class="nav-section">Management</div>
+      <button class="nav-item" data-page="doctors"><span class="nav-icon">👨‍⚕️</span>Doctors</button>
+      <button class="nav-item" data-page="patients"><span class="nav-icon">👥</span>Patients</button>
+      <button class="nav-item" data-page="appointments"><span class="nav-icon">📅</span>Appointments</button>
+      <div class="nav-section">Finance</div>
+      <button class="nav-item" data-page="billing"><span class="nav-icon">💳</span>Billing</button>
+      <div class="nav-section">Account</div>
+      <button class="nav-item" data-page="profile"><span class="nav-icon">👤</span>My Profile</button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-avatar" id="sbAvatar" style="background:#f59e0b;color:#78350f">A</div>
+        <div style="flex:1;min-width:0">
+          <div class="sidebar-user-name" id="sbName">Admin</div>
+          <div class="sidebar-user-role">Administrator</div>
+        </div>
+        <button class="sidebar-logout" onclick="logout()" title="Logout">⏻</button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <span id="pageTitle" style="font-size:16px;font-weight:600">Dashboard</span>
+      <div class="topbar-right">
+        <span class="topbar-user" id="tbUser"></span>
+        <span class="role-pill role-pill-admin">Admin</span>
+      </div>
+    </header>
+    <main class="page-body" id="pageBody"><div class="spinner"></div></main>
+  </div>
+</div>
+
+<div class="toast" id="globalToast"></div>
+
+<script src="../js/api.js"></script>
+<script>
+let user = null;
+let chartObj = null;
+
+(async function() {
+  user = requireAuth('admin');
+  if (!user) return;
+  document.getElementById('sbAvatar').textContent = user.name[0].toUpperCase();
+  document.getElementById('sbName').textContent   = user.name;
+  document.getElementById('tbUser').textContent   = user.name;
+  document.querySelectorAll('.nav-item').forEach(b => b.addEventListener('click', () => navigate(b.dataset.page)));
+  navigate('dashboard');
+})();
+
+function navigate(page) {
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+  const titles = { dashboard:'Dashboard', doctors:'Doctors', patients:'Patients', appointments:'Appointments', billing:'Billing', profile:'My Profile' };
+  document.getElementById('pageTitle').textContent = titles[page] || page;
+  if (chartObj) { chartObj.destroy(); chartObj = null; }
+  PAGES[page]?.();
+}
+
+const PAGES = {
+  async dashboard() {
+    const pb = document.getElementById('pageBody');
+    pb.innerHTML = '<div class="spinner"></div>';
+    try {
+      const res = await Admin.dashboard();
+      const d   = res.data;
+      pb.innerHTML = `
+        <div class="welcome-banner">
+          <div class="wb-text"><h3>Welcome, ${user.name}!</h3><p>Hospital overview · ${new Date().toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'long'})}</p></div>
+          <div class="wb-icon">🏥</div>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-icon si-teal">👥</div><div><div class="stat-value">${d.totalPatients}</div><div class="stat-label">Total Patients</div></div></div>
+          <div class="stat-card"><div class="stat-icon si-blue">👨‍⚕️</div><div><div class="stat-value">${d.totalDoctors}</div><div class="stat-label">Active Doctors</div></div></div>
+          <div class="stat-card"><div class="stat-icon si-amber">📅</div><div><div class="stat-value">${d.totalAppts}</div><div class="stat-label">Appointments</div></div></div>
+          <div class="stat-card"><div class="stat-icon si-green">💰</div><div><div class="stat-value">${formatCurrency(d.revenue)}</div><div class="stat-label">Revenue Collected</div></div></div>
+          <div class="stat-card"><div class="stat-icon si-red">⏳</div><div><div class="stat-value">${d.pendingAppts}</div><div class="stat-label">Pending Approvals</div></div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
+          <div class="card"><div class="card-header"><span class="card-title">Recent Appointments</span></div>
+            <div class="table-wrap"><table>
+              <thead><tr><th>Patient</th><th>Doctor</th><th>Date</th><th>Status</th></tr></thead>
+              <tbody>${d.recentAppts.map(a=>`<tr>
+                <td>${a.patient_name}</td><td>${a.doctor_name}</td>
+                <td style="font-size:12px">${formatDate(a.appointment_date)}</td>
+                <td>${badge(a.status)}</td>
+              </tr>`).join('')}</tbody>
+            </table></div>
+          </div>
+          <div class="card"><div class="card-header"><span class="card-title">Recent Billing</span></div>
+            <div class="table-wrap"><table>
+              <thead><tr><th>Patient</th><th>Amount</th><th>Status</th></tr></thead>
+              <tbody>${d.billing.map(b=>`<tr>
+                <td>${b.patient_name}</td>
+                <td>${formatCurrency(b.total_amount)}</td>
+                <td>${badge(b.payment_status)}</td>
+              </tr>`).join('')}</tbody>
+            </table></div>
+          </div>
+        </div>`;
+    } catch(err) { document.getElementById('pageBody').innerHTML = `<div class="alert alert-error" style="display:block">${err.message}</div>`; }
+  },
+
+  async doctors() {
+    const pb = document.getElementById('pageBody');
+    pb.innerHTML = '<div class="spinner"></div>';
+    try {
+      const res = await Doctors.list();
+      pb.innerHTML = `<div class="card">
+        <div class="card-header"><span class="card-title">All Doctors (${res.data.length})</span>
+          <a href="register.html" class="btn btn-primary btn-sm">+ Add Doctor</a>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Name</th><th>Specialization</th><th>Qualification</th><th>Experience</th><th>Fee</th><th>Status</th></tr></thead>
+          <tbody>${res.data.map(d=>`<tr>
+            <td><strong>${d.name}</strong><br><small style="color:var(--text2)">${d.email}</small></td>
+            <td>${d.specialization}</td>
+            <td>${d.qualification||'—'}</td>
+            <td>${d.experience_years} yrs</td>
+            <td>${formatCurrency(d.consultation_fee)}</td>
+            <td>${badge(d.status)}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </div>`;
+    } catch(err) { document.getElementById('pageBody').innerHTML = `<div class="alert alert-error" style="display:block">${err.message}</div>`; }
+  },
+
+  async patients() {
+    const pb = document.getElementById('pageBody');
+    pb.innerHTML = '<div class="spinner"></div>';
+    try {
+      const res = await Patients.list();
+      pb.innerHTML = `<div class="card">
+        <div class="card-header"><span class="card-title">All Patients (${res.data.length})</span></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Blood</th><th>Gender</th><th>Registered</th></tr></thead>
+          <tbody>${res.data.map(p=>`<tr>
+            <td><strong>${p.name}</strong></td>
+            <td style="font-size:12px;color:var(--text2)">${p.email}</td>
+            <td style="font-size:12px">${p.phone||'—'}</td>
+            <td><span class="badge badge-confirmed">${p.blood_group||'—'}</span></td>
+            <td>${p.gender||'—'}</td>
+            <td style="font-size:12px">${formatDate(p.created_at)}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </div>`;
+    } catch(err) { document.getElementById('pageBody').innerHTML = `<div class="alert alert-error" style="display:block">${err.message}</div>`; }
+  },
+
+  async appointments() {
+    const pb = document.getElementById('pageBody');
+    pb.innerHTML = '<div class="spinner"></div>';
+    try {
+      const res = await Appointments.list();
+      pb.innerHTML = `<div class="card">
+        <div class="card-header"><span class="card-title">All Appointments (${res.data.length})</span>
+          <div style="display:flex;gap:6px">
+            ${['pending','confirmed','completed','cancelled'].map(s=>`<button class="btn btn-outline btn-sm" onclick="filterAppts('${s}')">${s}</button>`).join('')}
+            <button class="btn btn-outline btn-sm" onclick="filterAppts('')">all</button>
+          </div>
+        </div>
+        <div class="table-wrap" id="apptTableWrap"><table>
+          <thead><tr><th>Patient</th><th>Doctor</th><th>Date & Time</th><th>Reason</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody id="apptTbody">${renderApptRows(res.data)}</tbody>
+        </table></div>
+      </div>`;
+      window._allAppts = res.data;
+    } catch(err) { document.getElementById('pageBody').innerHTML = `<div class="alert alert-error" style="display:block">${err.message}</div>`; }
+  },
+
+  async billing() {
+    const pb = document.getElementById('pageBody');
+    pb.innerHTML = '<div class="spinner"></div>';
+    try {
+      const res = await Admin.billing();
+      const total = res.data.reduce((s,b)=>s+parseFloat(b.total_amount||0),0);
+      const paid  = res.data.filter(b=>b.payment_status==='paid').reduce((s,b)=>s+parseFloat(b.total_amount||0),0);
+      pb.innerHTML = `
+        <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+          <div class="stat-card"><div class="stat-icon si-blue">🧾</div><div><div class="stat-value">${res.data.length}</div><div class="stat-label">Total Records</div></div></div>
+          <div class="stat-card"><div class="stat-icon si-green">✅</div><div><div class="stat-value">${formatCurrency(paid)}</div><div class="stat-label">Collected</div></div></div>
+          <div class="stat-card"><div class="stat-icon si-amber">⏳</div><div><div class="stat-value">${formatCurrency(total-paid)}</div><div class="stat-label">Pending</div></div></div>
+        </div>
+        <div class="card"><div class="card-header"><span class="card-title">All Billing Records</span></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Patient</th><th>Doctor</th><th>Date</th><th>Consult Fee</th><th>Medicine</th><th>Total</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>${res.data.map(b=>`<tr>
+              <td>${b.patient_name}</td><td>${b.doctor_name}</td>
+              <td style="font-size:12px">${formatDate(b.appointment_date)}</td>
+              <td>${formatCurrency(b.consultation_fee)}</td>
+              <td>${formatCurrency(b.medicine_cost)}</td>
+              <td><strong>${formatCurrency(b.total_amount)}</strong></td>
+              <td>${badge(b.payment_status)}</td>
+              <td>${b.payment_status==='pending'?`<button class="btn btn-primary btn-sm" onclick="markPaid(${b.id})">Mark Paid</button>`:'—'}</td>
+            </tr>`).join('')}</tbody>
+          </table></div>
+        </div>`;
+    } catch(err) { document.getElementById('pageBody').innerHTML = `<div class="alert alert-error" style="display:block">${err.message}</div>`; }
+  },
+
+  async profile() {
+    const pb = document.getElementById('pageBody');
+    pb.innerHTML = `<div class="card" style="max-width:480px"><div class="card-header"><span class="card-title">Admin Profile</span></div><div class="card-body">
+      <div class="profile-header">
+        <div class="profile-avatar" style="background:#f59e0b">${user.name[0]}</div>
+        <div><div class="profile-name">${user.name}</div><div class="profile-email">${user.email}</div>
+        <span class="badge badge-pending" style="margin-top:6px;display:inline-flex">Administrator</span></div>
+      </div>
+      <div class="form-grid">
+        <div class="form-group"><label>Full Name</label><input value="${user.name}" disabled/></div>
+        <div class="form-group"><label>Email</label><input value="${user.email}" disabled/></div>
+        <div class="form-group"><label>Phone</label><input value="${user.phone||''}" disabled/></div>
+        <div class="form-group"><label>Role</label><input value="Administrator" disabled/></div>
+      </div>
+    </div></div>`;
+  },
+};
+
+function renderApptRows(data) {
+  if (!data.length) return `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text2)">No appointments found</td></tr>`;
+  return data.map(a=>`<tr>
+    <td>${a.patient_name}</td>
+    <td>${a.doctor_name}<br><small style="color:var(--text2)">${a.specialization}</small></td>
+    <td style="font-size:12px">${formatDate(a.appointment_date)}<br>${a.appointment_time?.slice(0,5)}</td>
+    <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.reason||'—'}</td>
+    <td>${badge(a.status)}</td>
+    <td style="display:flex;gap:6px">
+      ${a.status==='pending'?`<button class="btn btn-outline btn-sm" onclick="changeApptStatus(${a.id},'confirmed')">✅ Confirm</button>`:''}
+      ${a.status==='confirmed'?`<button class="btn btn-primary btn-sm" onclick="changeApptStatus(${a.id},'completed')">✔ Complete</button>`:''}
+    </td>
+  </tr>`).join('');
+}
+
+function filterAppts(status) {
+  const tbody = document.getElementById('apptTbody');
+  if (!tbody) return;
+  const filtered = status ? window._allAppts.filter(a=>a.status===status) : window._allAppts;
+  tbody.innerHTML = renderApptRows(filtered);
+}
+
+async function changeApptStatus(id, status) {
+  try {
+    await Appointments.status(id, { status });
+    showToast('Status updated to ' + status);
+    navigate('appointments');
+  } catch(err) { showToast(err.message,'error'); }
+}
+
+async function markPaid(id) {
+  try {
+    await Admin.updateBilling(id, { payment_status:'paid', payment_method:'cash' });
+    showToast('Bill marked as paid!');
+    navigate('billing');
+  } catch(err) { showToast(err.message,'error'); }
+}
+</script>
+</body>
+</html>

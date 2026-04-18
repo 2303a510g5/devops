@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>MediCore HMS — Register</title>
+<link rel="stylesheet" href="../css/login.css"/>
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-left">
+    <div class="auth-brand">
+      <div class="auth-brand-icon">M</div>
+      <span class="auth-brand-name">MediCore HMS</span>
+    </div>
+    <div>
+      <h1 class="auth-title">Join<br><em>MediCore</em><br>Today</h1>
+      <p class="auth-sub">Create your free account and get access to world-class healthcare management.</p>
+    </div>
+    <div class="auth-stats">
+      <div><div class="hs-num">Free</div><div class="hs-lbl">Registration</div></div>
+      <div><div class="hs-num">Instant</div><div class="hs-lbl">Access</div></div>
+      <div><div class="hs-num">Secure</div><div class="hs-lbl">Data</div></div>
+    </div>
+    <div class="deco">
+      <div class="deco-ring" style="width:260px;height:260px"></div>
+      <div class="deco-ring" style="width:430px;height:430px;border-color:rgba(45,212,191,.05)"></div>
+    </div>
+  </div>
+
+  <div class="auth-right reg-right">
+    <div class="auth-card reg-card">
+      <div class="auth-card-title">Create Account</div>
+      <div class="auth-card-sub">Register as a new user</div>
+
+      <div class="role-tabs" id="regRoleTabs">
+        <button class="role-tab active" data-role="patient">Patient</button>
+        <button class="role-tab" data-role="doctor">Doctor</button>
+        <button class="role-tab" data-role="admin">Admin</button>
+      </div>
+
+      <div class="alert-box alert-box-error"   id="regErr"></div>
+      <div class="alert-box alert-box-success" id="regOk"></div>
+
+      <!-- Common fields -->
+      <div class="form-group"><label>Full Name *</label><input type="text" id="rName" placeholder="John Smith"/></div>
+      <div class="form-group"><label>Email *</label><input type="email" id="rEmail" placeholder="you@email.com"/></div>
+      <div class="form-group">
+        <label>Password *</label>
+        <div class="pw-wrap">
+          <input type="password" id="rPass" placeholder="Min 8 characters"/>
+          <button class="pw-toggle" id="rEye">👁</button>
+        </div>
+      </div>
+      <div class="form-group"><label>Confirm Password *</label><input type="password" id="rPass2" placeholder="Repeat password"/></div>
+      <div class="form-group"><label>Phone</label><input type="tel" id="rPhone" placeholder="+91-9000000000"/></div>
+
+      <!-- Patient fields -->
+      <div id="patientFields">
+        <div class="form-group"><label>Date of Birth</label><input type="date" id="rDob"/></div>
+        <div class="form-group"><label>Gender</label>
+          <select id="rGender"><option value="">Select</option><option>Male</option><option>Female</option><option>Other</option></select>
+        </div>
+        <div class="form-group"><label>Blood Group</label>
+          <select id="rBlood"><option value="">Select</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select>
+        </div>
+      </div>
+
+      <!-- Doctor fields -->
+      <div id="doctorFields" style="display:none">
+        <div class="form-group"><label>Specialization *</label><input type="text" id="rSpec" placeholder="Cardiology"/></div>
+        <div class="form-group"><label>Qualification</label><input type="text" id="rQual" placeholder="MBBS, MD"/></div>
+        <div class="form-group"><label>Experience (Years)</label><input type="number" id="rExp" min="0" value="0"/></div>
+        <div class="form-group"><label>Consultation Fee (₹)</label><input type="number" id="rFee" min="0" value="500"/></div>
+      </div>
+
+      <!-- Admin fields -->
+      <div id="adminFields" style="display:none">
+        <div class="form-group"><label>Admin Secret Key *</label><input type="password" id="rSecret" placeholder="Enter secret key"/></div>
+        <div class="admin-hint">Secret key required. Demo key: <strong>HMS@AdminKey2026</strong></div>
+      </div>
+
+      <button class="btn-auth" id="regBtn" style="margin-top:12px">Create Account</button>
+      <div class="link-row">Already have an account? <a href="../index.html">Sign in →</a></div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script>
+let regRole = 'patient';
+
+document.querySelectorAll('#regRoleTabs .role-tab').forEach(b => {
+  b.addEventListener('click', () => {
+    regRole = b.dataset.role;
+    document.querySelectorAll('#regRoleTabs .role-tab').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('patientFields').style.display = regRole === 'patient' ? 'block' : 'none';
+    document.getElementById('doctorFields').style.display  = regRole === 'doctor'  ? 'block' : 'none';
+    document.getElementById('adminFields').style.display   = regRole === 'admin'   ? 'block' : 'none';
+  });
+});
+
+document.getElementById('rEye').addEventListener('click', () => {
+  const i = document.getElementById('rPass'); i.type = i.type === 'password' ? 'text' : 'password';
+});
+
+document.getElementById('regBtn').addEventListener('click', async () => {
+  const name   = document.getElementById('rName').value.trim();
+  const email  = document.getElementById('rEmail').value.trim();
+  const pass   = document.getElementById('rPass').value;
+  const pass2  = document.getElementById('rPass2').value;
+  const phone  = document.getElementById('rPhone').value.trim();
+  const errEl  = document.getElementById('regErr');
+  const okEl   = document.getElementById('regOk');
+  const btn    = document.getElementById('regBtn');
+
+  errEl.style.display = 'none'; okEl.style.display = 'none';
+  if (!name || !email || !pass) { errEl.textContent = 'Name, email and password are required.'; errEl.style.display = 'block'; return; }
+  if (pass.length < 8)          { errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display = 'block'; return; }
+  if (pass !== pass2)           { errEl.textContent = 'Passwords do not match.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true; btn.textContent = 'Creating account...';
+  try {
+    let res;
+    if (regRole === 'patient') {
+      res = await Auth.register({ name, email, password: pass, phone, date_of_birth: document.getElementById('rDob').value || null, gender: document.getElementById('rGender').value || null, blood_group: document.getElementById('rBlood').value || null });
+      token.set(res.token); session.set(res.user);
+      window.location.href = 'patient.html';
+      return;
+    } else if (regRole === 'doctor') {
+      const spec = document.getElementById('rSpec').value.trim();
+      if (!spec) { errEl.textContent = 'Specialization is required for doctors.'; errEl.style.display = 'block'; btn.disabled = false; btn.textContent = 'Create Account'; return; }
+      res = await Auth.registerDoctor({ name, email, password: pass, phone, specialization: spec, qualification: document.getElementById('rQual').value, experience_years: document.getElementById('rExp').value, consultation_fee: document.getElementById('rFee').value });
+    } else {
+      const secretKey = document.getElementById('rSecret').value;
+      res = await Auth.registerAdmin({ name, email, password: pass, phone, secretKey });
+    }
+    okEl.textContent = '✓ Account created! Redirecting to login...';
+    okEl.style.display = 'block';
+    setTimeout(() => window.location.href = '../index.html', 1800);
+  } catch (err) {
+    errEl.textContent = err.message; errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create Account';
+  }
+});
+</script>
+</body>
+</html>
